@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/antlinker/mqttindividual/config"
+	"github.com/antlinker/mqttpersonal/config"
 
 	"gopkg.in/mgo.v2/bson"
 )

@@ -9,7 +9,7 @@ import (
 	"gopkg.in/alog.v1"
 	"gopkg.in/mgo.v2"
 
-	"github.com/antlinker/mqttindividual/config"
+	"github.com/antlinker/mqttpersonal/config"
 )
 
 // Gen 生成客户端数据

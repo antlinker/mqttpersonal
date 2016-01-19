@@ -6,15 +6,15 @@ import (
 	"github.com/codegangsta/cli"
 	"gopkg.in/alog.v1"
 
-	"github.com/antlinker/mqttindividual/clear"
-	"github.com/antlinker/mqttindividual/generate"
-	"github.com/antlinker/mqttindividual/publish"
+	"github.com/antlinker/mqttpersonal/clear"
+	"github.com/antlinker/mqttpersonal/generate"
+	"github.com/antlinker/mqttpersonal/publish"
 )
 
 func main() {
 	alog.RegisterAlog("conf/log.yaml")
 	app := cli.NewApp()
-	app.Name = "mqttindividual"
+	app.Name = "mqttpersonal"
 	app.Author = "Lyric"
 	app.Version = "0.1.0"
 	app.Usage = "MQTT单人聊天测试"

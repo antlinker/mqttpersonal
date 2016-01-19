@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/antlinker/mqttindividual/config"
+	"github.com/antlinker/mqttpersonal/config"
 
 	"github.com/antlinker/go-cmap"
 

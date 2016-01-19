@@ -3,28 +3,28 @@
 ## 获取
 
 ``` bash
-$ go get github.com/antlinker/mqttindividual
+$ go get github.com/antlinker/mqttpersonal
 ```
 
 ## 使用
 
 ``` bash
-$ cd github.com/antlinker/mqttindividual
-$ go build -o mqttindividual
+$ cd github.com/antlinker/mqttpersonal
+$ go build -o mqttpersonal
 ```
 
 ## Help
 
 ``` bash
-$ ./mqttindividual help
+$ ./mqttpersonal help
 ```
 
 ```
 NAME:
-   mqttindividual - MQTT单人聊天测试
+   mqttpersonal - MQTT单人聊天测试
 
 USAGE:
-   ./mqttindividual [global options] command [command options] [arguments...]
+   ./mqttpersonal [global options] command [command options] [arguments...]
 
 VERSION:
    0.1.0
