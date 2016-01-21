@@ -7,11 +7,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	MQTT "git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git"
+	"github.com/antlinker/go-cmap"
 	"github.com/antlinker/mqttpersonal/config"
 
-	"github.com/antlinker/go-cmap"
-
-	"github.com/yosssi/gmq/mqtt/client"
 	"gopkg.in/alog.v1"
 	"gopkg.in/mgo.v2"
 )
@@ -22,7 +21,7 @@ func Pub(cfg *Config) {
 		cfg:             cfg,
 		lg:              alog.NewALog(),
 		clientIndexData: make(map[string]int),
-		clients:         make(map[string]*client.Client),
+		clients:         make(map[string]*MQTT.Client),
 		disClients:      cmap.NewConcurrencyMap(),
 		execComplete:    make(chan bool, 1),
 		end:             make(chan bool, 1),
@@ -55,7 +54,7 @@ type Publish struct {
 	database        *mgo.Database
 	clientData      []config.ClientInfo
 	clientIndexData map[string]int
-	clients         map[string]*client.Client
+	clients         map[string]*MQTT.Client
 	disClients      cmap.ConcurrencyMap
 	publishID       int64
 	execNum         int64
@@ -109,41 +108,43 @@ func (p *Publish) initData() error {
 func (p *Publish) initConnection() error {
 	p.lg.Info("开始建立MQTT数据连接初始化...")
 	for i, l := 0, len(p.clientData); i < l; i++ {
-		c := p.clientData[i]
-		clientID := c.ClientID
-		clientConn := NewHandleConnect(clientID, p)
-		cli := client.New(&client.Options{
-			ErrorHandler: clientConn.ErrorHandle,
-		})
-		connOptions := &client.ConnectOptions{
-			Network:   p.cfg.Network,
-			Address:   p.cfg.Address,
-			ClientID:  []byte(clientID),
-			KeepAlive: uint16(p.cfg.KeepAlive),
+		clientInfo := p.clientData[i]
+		clientID := clientInfo.ClientID
+		opts := MQTT.NewClientOptions()
+		opts.AddBroker(fmt.Sprintf("%s://%s", p.cfg.Network, p.cfg.Address))
+		opts.SetClientID(clientID)
+		opts.SetStore(MQTT.NewMemoryStore())
+		opts.SetProtocolVersion(4)
+		autoReconnect := true
+		if v := p.cfg.DisconnectScale; v > 0 {
+			autoReconnect = false
 		}
-		if p.cfg.UserName != "" && p.cfg.Password != "" {
-			connOptions.UserName = []byte(p.cfg.UserName)
-			connOptions.Password = []byte(p.cfg.Password)
+		opts.SetAutoReconnect(autoReconnect)
+		if name, pwd := p.cfg.UserName, p.cfg.Password; name != "" && pwd != "" {
+			opts.SetUsername(name)
+			opts.SetPassword(pwd)
+		}
+		if v := p.cfg.KeepAlive; v > 0 {
+			opts.SetKeepAlive(time.Duration(v))
 		}
 		if v := p.cfg.CleanSession; v {
-			connOptions.CleanSession = v
+			opts.SetCleanSession(v)
 		}
-		err := cli.Connect(connOptions)
-		if err != nil {
-			return fmt.Errorf("Client %s connect error:%s", clientID, err.Error())
+		clientHandle := NewHandleConnect(clientID, p)
+		opts.SetConnectionLostHandler(func(cli *MQTT.Client, err error) {
+			clientHandle.ErrorHandle(err)
+		})
+		cli := MQTT.NewClient(opts)
+		connectToken := cli.Connect()
+		if connectToken.Wait() && connectToken.Error() != nil {
+			return fmt.Errorf("客户端[%s]建立连接发生异常:%s", clientID, connectToken.Error().Error())
 		}
 		topic := "C/" + clientID
-		err = cli.Subscribe(&client.SubscribeOptions{
-			SubReqs: []*client.SubReq{
-				&client.SubReq{
-					TopicFilter: []byte(topic),
-					QoS:         p.cfg.Qos,
-					Handler:     clientConn.Subscribe,
-				},
-			},
+		subToken := cli.Subscribe(topic, p.cfg.Qos, func(cli *MQTT.Client, msg MQTT.Message) {
+			clientHandle.Subscribe([]byte(msg.Topic()), msg.Payload())
 		})
-		if err != nil {
-			return fmt.Errorf("The client %s subscribe topic %s error:%s", clientID, topic, err.Error())
+		if subToken.Wait() && subToken.Error() != nil {
+			return fmt.Errorf("客户端[%s]订阅主题发生异常:%s", clientID, subToken.Error().Error())
 		}
 		p.clients[clientID] = cli
 	}
@@ -200,7 +201,7 @@ func (p *Publish) pubAndRecOutput(ticker *time.Ticker) {
 		avgRNum := rsNum / int64(len(arrRNum))
 		clientNum := len(p.clients) - p.disClients.Len()
 		output := `
-执行耗时                    %.2fs
+总耗时                      %.2fs
 执行次数                    %d
 客户端数量                  %d
 应发包量                    %d
@@ -243,7 +244,7 @@ func (p *Publish) disconnect() {
 		if exist {
 			continue
 		}
-		v.Disconnect()
+		v.Disconnect(100)
 		disCount--
 		if disCount == 0 {
 			break
@@ -287,14 +288,10 @@ func (p *Publish) userPublish(clientInfo config.ClientInfo) {
 			continue
 		}
 		topic := "C/" + clientInfo.Relations[j]
-		err = cli.Publish(&client.PublishOptions{
-			QoS:       p.cfg.Qos,
-			TopicName: []byte(topic),
-			Message:   bufData,
-		})
-		if err != nil {
-			p.lg.Errorf("Client %s publish topic %s error:%s", clientInfo.ClientID, topic, err.Error())
-			return
+		publishToken := cli.Publish(topic, p.cfg.Qos, false, bufData)
+		if publishToken.Wait() && publishToken.Error() != nil {
+			p.lg.Errorf("客户端[%s]发布消息出现异常:%s", clientInfo.ClientID, publishToken.Error().Error())
+			continue
 		}
 		atomic.AddInt64(&p.publishNum, 1)
 		// 好友之间的发包间隔
