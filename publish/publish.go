@@ -125,7 +125,7 @@ func (p *Publish) initConnection() error {
 			opts.SetPassword(pwd)
 		}
 		if v := p.cfg.KeepAlive; v > 0 {
-			opts.SetKeepAlive(time.Duration(v))
+			opts.SetKeepAlive(time.Duration(v) * time.Second)
 		}
 		if v := p.cfg.CleanSession; v {
 			opts.SetCleanSession(v)
@@ -189,6 +189,9 @@ func (p *Publish) pubAndRecOutput(ticker *time.Ticker) {
 		currentSecond := float64(ct.Sub(p.startTime)) / float64(time.Second)
 		var psNum int64
 		arrPNum := p.arrPublishNum
+		if len(arrPNum) == 0 {
+			continue
+		}
 		for i := 0; i < len(arrPNum); i++ {
 			psNum += arrPNum[i]
 		}
