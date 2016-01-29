@@ -44,7 +44,7 @@ func main() {
 				Usage: "为每个用户建立好友关系时所采用的层级",
 			},
 			cli.StringFlag{
-				Name:  "MongoURL, m",
+				Name:  "MongoURL, mgo",
 				Value: "mongodb://127.0.0.1:27017",
 				Usage: "MongoDB连接URL",
 			},
@@ -81,9 +81,14 @@ func main() {
 				Usage: "好友发包间隔（单位毫秒）",
 			},
 			cli.IntFlag{
+				Name:  "AutoReconnect, ar",
+				Value: 1,
+				Usage: "客户端断开连接后执行自动重连(默认为1，0表示不重连)",
+			},
+			cli.IntFlag{
 				Name:  "DisconnectScale, ds",
 				Value: 0,
-				Usage: "发送完成之后，需要断开客户端的比例",
+				Usage: "发送完成之后，需要断开客户端的比例(默认为0，不断开)",
 			},
 			cli.BoolFlag{
 				Name:  "IsStore, s",
@@ -143,6 +148,9 @@ func main() {
 				CleanSession: ctx.Bool("CleanSession"),
 				KeepAlive:    ctx.Int("KeepAlive"),
 				MongoUrl:     ctx.String("mongo"),
+			}
+			if ctx.Int("AutoReconnect") == 1 {
+				cfg.AutoReconnect = true
 			}
 			publish.Pub(cfg)
 		},

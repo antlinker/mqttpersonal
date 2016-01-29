@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	MQTT "github.com/antlinker/mqtt-cli"
+
 	"gopkg.in/alog.v1"
 	"gopkg.in/mgo.v2"
 
@@ -21,8 +23,7 @@ func Pub(cfg *Config) {
 		cfg:             cfg,
 		lg:              alog.NewALog(),
 		clientIndexData: make(map[string]int),
-		clients:         make(map[string]*MQTT.Client),
-		disClients:      cmap.NewConcurrencyMap(),
+		clients:         cmap.NewConcurrencyMap(),
 		execComplete:    make(chan bool, 1),
 		end:             make(chan bool, 1),
 		startTime:       time.Now(),
@@ -54,8 +55,7 @@ type Publish struct {
 	database        *mgo.Database
 	clientData      []config.ClientInfo
 	clientIndexData map[string]int
-	clients         map[string]*MQTT.Client
-	disClients      cmap.ConcurrencyMap
+	clients         cmap.ConcurrencyMap
 	publishID       int64
 	execNum         int64
 	execComplete    chan bool
@@ -107,47 +107,51 @@ func (p *Publish) initData() error {
 
 func (p *Publish) initConnection() error {
 	p.lg.Info("开始建立MQTT数据连接初始化...")
-	for i, l := 0, len(p.clientData); i < l; i++ {
-		clientInfo := p.clientData[i]
-		clientID := clientInfo.ClientID
-		opts := MQTT.NewClientOptions()
-		opts.AddBroker(fmt.Sprintf("%s://%s", p.cfg.Network, p.cfg.Address))
-		opts.SetClientID(clientID)
-		opts.SetStore(MQTT.NewMemoryStore())
-		opts.SetProtocolVersion(4)
-		autoReconnect := true
-		if v := p.cfg.DisconnectScale; v > 0 {
-			autoReconnect = false
-		}
-		opts.SetAutoReconnect(autoReconnect)
-		if name, pwd := p.cfg.UserName, p.cfg.Password; name != "" && pwd != "" {
-			opts.SetUsername(name)
-			opts.SetPassword(pwd)
-		}
-		if v := p.cfg.KeepAlive; v > 0 {
-			opts.SetKeepAlive(time.Duration(v) * time.Second)
-		}
-		if v := p.cfg.CleanSession; v {
-			opts.SetCleanSession(v)
-		}
-		clientHandle := NewHandleConnect(clientID, p)
-		opts.SetConnectionLostHandler(func(cli *MQTT.Client, err error) {
-			clientHandle.ErrorHandle(err)
-		})
-		cli := MQTT.NewClient(opts)
-		connectToken := cli.Connect()
-		if connectToken.Wait() && connectToken.Error() != nil {
-			return fmt.Errorf("客户端[%s]建立连接发生异常:%s", clientID, connectToken.Error().Error())
-		}
-		topic := "C/" + clientID
-		subToken := cli.Subscribe(topic, p.cfg.Qos, func(cli *MQTT.Client, msg MQTT.Message) {
-			clientHandle.Subscribe([]byte(msg.Topic()), msg.Payload())
-		})
-		if subToken.Wait() && subToken.Error() != nil {
-			return fmt.Errorf("客户端[%s]订阅主题发生异常:%s", clientID, subToken.Error().Error())
-		}
-		p.clients[clientID] = cli
+	var wgroup sync.WaitGroup
+	cl := len(p.clientData)
+	wgroup.Add(cl)
+	for i, l := 0, cl; i < l; i++ {
+		go func(clientInfo config.ClientInfo) {
+			defer wgroup.Done()
+			clientID := clientInfo.ClientID
+			opts := MQTT.NewClientOptions()
+			opts.AddBroker(fmt.Sprintf("%s://%s", p.cfg.Network, p.cfg.Address))
+			opts.SetClientID(clientID)
+			opts.SetProtocolVersion(4)
+			opts.SetAutoReconnect(p.cfg.AutoReconnect)
+			opts.SetStore(MQTT.NewMemoryStore())
+			if name, pwd := p.cfg.UserName, p.cfg.Password; name != "" && pwd != "" {
+				opts.SetUsername(name)
+				opts.SetPassword(pwd)
+			}
+			if v := p.cfg.KeepAlive; v > 0 {
+				opts.SetKeepAlive(time.Duration(v) * time.Second)
+			}
+			if v := p.cfg.CleanSession; v {
+				opts.SetCleanSession(v)
+			}
+			clientHandle := NewHandleConnect(clientID, p)
+			opts.SetConnectionLostHandler(func(cli *MQTT.Client, err error) {
+				clientHandle.ErrorHandle(err)
+			})
+			cli := MQTT.NewClient(opts)
+			connectToken := cli.Connect()
+			if connectToken.Wait() && connectToken.Error() != nil {
+				p.lg.Errorf("客户端[%s]建立连接发生异常:%s", clientID, connectToken.Error().Error())
+				return
+			}
+			topic := "C/" + clientID
+			subToken := cli.Subscribe(topic, p.cfg.Qos, func(cli *MQTT.Client, msg MQTT.Message) {
+				clientHandle.Subscribe([]byte(msg.Topic()), msg.Payload())
+			})
+			if subToken.Wait() && subToken.Error() != nil {
+				p.lg.Errorf("客户端[%s]订阅主题发生异常:%s", clientID, subToken.Error().Error())
+				return
+			}
+			p.clients.Set(clientID, cli)
+		}(p.clientData[i])
 	}
+	wgroup.Wait()
 	p.lg.Info("MQTT数据连接初始化完成.")
 	return nil
 }
@@ -202,7 +206,7 @@ func (p *Publish) pubAndRecOutput(ticker *time.Ticker) {
 			rsNum += arrRNum[i]
 		}
 		avgRNum := rsNum / int64(len(arrRNum))
-		clientNum := len(p.clients) - p.disClients.Len()
+		clientNum := p.clients.Len()
 		output := `
 总耗时                      %.2fs
 执行次数                    %d
@@ -237,17 +241,14 @@ func (p *Publish) ExecPublish() {
 }
 
 func (p *Publish) disconnect() {
-	if v := p.cfg.DisconnectScale; v > 100 || v <= 0 {
+	if v := p.cfg.DisconnectScale; v <= 0 || v > 100 || p.cfg.AutoReconnect {
 		return
 	}
-	clientCount := len(p.clients)
+	clientCount := p.clients.Len()
 	disCount := int(float32(clientCount) * (float32(p.cfg.DisconnectScale) / 100))
-	for k, v := range p.clients {
-		exist, _ := p.disClients.Contains(k)
-		if exist {
-			continue
-		}
-		v.Disconnect(100)
+	for _, v := range p.clients.ToMap() {
+		cli := v.(*MQTT.Client)
+		cli.Disconnect(100)
 		disCount--
 		if disCount == 0 {
 			break
@@ -258,10 +259,6 @@ func (p *Publish) disconnect() {
 func (p *Publish) publish() {
 	for i, l := 0, len(p.clientData); i < l; i++ {
 		clientInfo := p.clientData[i]
-		v, _ := p.disClients.Contains(clientInfo.ClientID)
-		if v {
-			continue
-		}
 		pNum := len(clientInfo.Relations)
 		p.publishTotalNum += int64(pNum)
 		p.receiveTotalNum += int64(pNum)
@@ -270,12 +267,14 @@ func (p *Publish) publish() {
 }
 
 func (p *Publish) userPublish(clientInfo config.ClientInfo) {
-	cli := p.clients[clientInfo.ClientID]
+	clientID := clientInfo.ClientID
+	c, _ := p.clients.Get(clientID)
+	cli := c.(*MQTT.Client)
 	for j := 0; j < len(clientInfo.Relations); j++ {
 		cTime := time.Now()
 		sendPacket := config.PacketInfo{
 			ID:        fmt.Sprintf("%d_%d", cTime.Unix(), atomic.AddInt64(&p.publishID, 1)),
-			SendID:    clientInfo.ClientID,
+			SendID:    clientID,
 			ReceiveID: clientInfo.Relations[j],
 			SendTime:  cTime,
 		}
@@ -291,11 +290,11 @@ func (p *Publish) userPublish(clientInfo config.ClientInfo) {
 			continue
 		}
 		topic := "C/" + clientInfo.Relations[j]
-		publishToken := cli.Publish(topic, p.cfg.Qos, false, bufData)
-		if publishToken.Wait() && publishToken.Error() != nil {
-			p.lg.Errorf("客户端[%s]发布消息出现异常:%s", clientInfo.ClientID, publishToken.Error().Error())
-			continue
-		}
+		cli.Publish(topic, p.cfg.Qos, false, bufData)
+		// if publishToken.Wait() && publishToken.Error() != nil {
+		// 	p.lg.Errorf("客户端[%s]发布消息出现异常:%s", clientInfo.ClientID, publishToken.Error().Error())
+		// 	continue
+		// }
 		atomic.AddInt64(&p.publishNum, 1)
 		// 好友之间的发包间隔
 		if v := p.cfg.UserInterval; v > 0 {
