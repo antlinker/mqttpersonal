@@ -10,7 +10,7 @@ import (
 
 	MQTT "github.com/antlinker/mqtt-cli"
 
-	"gopkg.in/alog.v1"
+	"github.com/antlinker/alog"
 	"gopkg.in/mgo.v2"
 
 	"github.com/antlinker/go-cmap"

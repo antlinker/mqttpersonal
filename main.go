@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 
+	"github.com/antlinker/alog"
 	"github.com/codegangsta/cli"
-	"gopkg.in/alog.v1"
 
 	"github.com/antlinker/mqttpersonal/clear"
 	"github.com/antlinker/mqttpersonal/generate"
