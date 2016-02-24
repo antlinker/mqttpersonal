@@ -134,19 +134,21 @@ func (p *Publish) initConnection() error {
 			opts.SetConnectionLostHandler(func(cli *MQTT.Client, err error) {
 				clientHandle.ErrorHandle(err)
 			})
+		LB_RECONNECT:
 			cli := MQTT.NewClient(opts)
 			connectToken := cli.Connect()
 			if connectToken.Wait() && connectToken.Error() != nil {
-				p.lg.Errorf("客户端[%s]建立连接发生异常:%s", clientID, connectToken.Error().Error())
-				return
+				// p.lg.Errorf("客户端[%s]建立连接发生异常:%s", clientID, connectToken.Error().Error())
+				goto LB_RECONNECT
 			}
 			topic := "C/" + clientID
 			subToken := cli.Subscribe(topic, p.cfg.Qos, func(cli *MQTT.Client, msg MQTT.Message) {
 				clientHandle.Subscribe([]byte(msg.Topic()), msg.Payload())
 			})
 			if subToken.Wait() && subToken.Error() != nil {
-				p.lg.Errorf("客户端[%s]订阅主题发生异常:%s", clientID, subToken.Error().Error())
-				return
+				// p.lg.Errorf("客户端[%s]订阅主题发生异常:%s", clientID, subToken.Error().Error())
+				// return
+				goto LB_RECONNECT
 			}
 			p.clients.Set(clientID, cli)
 		}(p.clientData[i])
@@ -269,6 +271,9 @@ func (p *Publish) publish() {
 func (p *Publish) userPublish(clientInfo config.ClientInfo) {
 	clientID := clientInfo.ClientID
 	c, _ := p.clients.Get(clientID)
+	if c == nil {
+		return
+	}
 	cli := c.(*MQTT.Client)
 	for j := 0; j < len(clientInfo.Relations); j++ {
 		cTime := time.Now()
