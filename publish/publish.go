@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	MQTT "github.com/antlinker/mqtt-cli"
+	MQTT "github.com/antlinker/go-mqtt/client"
 
 	"github.com/antlinker/alog"
 	"gopkg.in/mgo.v2"
@@ -114,42 +114,45 @@ func (p *Publish) initConnection() error {
 		go func(clientInfo config.ClientInfo) {
 			defer wgroup.Done()
 			clientID := clientInfo.ClientID
-			opts := MQTT.NewClientOptions()
-			opts.AddBroker(fmt.Sprintf("%s://%s", p.cfg.Network, p.cfg.Address))
-			opts.SetClientID(clientID)
-			opts.SetProtocolVersion(4)
-			opts.SetAutoReconnect(p.cfg.AutoReconnect)
-			opts.SetStore(MQTT.NewMemoryStore())
+			opts := MQTT.MqttOption{
+				Addr:               fmt.Sprintf("%s://%s", p.cfg.Network, p.cfg.Address),
+				Clientid:           clientID,
+				ReconnTimeInterval: 1,
+			}
 			if name, pwd := p.cfg.UserName, p.cfg.Password; name != "" && pwd != "" {
-				opts.SetUsername(name)
-				opts.SetPassword(pwd)
+				opts.UserName = name
+				opts.Password = pwd
+
 			}
 			if v := p.cfg.KeepAlive; v > 0 {
-				opts.SetKeepAlive(time.Duration(v) * time.Second)
+				opts.KeepAlive = uint16(v)
 			}
 			if v := p.cfg.CleanSession; v {
-				opts.SetCleanSession(v)
+				opts.CleanSession = v
 			}
 			clientHandle := NewHandleConnect(clientID, p)
-			opts.SetConnectionLostHandler(func(cli *MQTT.Client, err error) {
-				clientHandle.ErrorHandle(err)
-			})
+			cli, err := MQTT.CreateClient(opts)
+			if err != nil {
+				panic(fmt.Sprintf("创建mqttclient失败:%v", err))
+			}
+			cli.AddConnListener(clientHandle)
+			cli.AddRecvPubListener(clientHandle)
 		LB_RECONNECT:
-			cli := MQTT.NewClient(opts)
-			connectToken := cli.Connect()
-			if connectToken.Wait() && connectToken.Error() != nil {
+
+			if err := cli.Connect(); err != nil {
 				// p.lg.Errorf("客户端[%s]建立连接发生异常:%s", clientID, connectToken.Error().Error())
+				time.Sleep(10 * time.Microsecond)
 				goto LB_RECONNECT
 			}
 			topic := "C/" + clientID
-			subToken := cli.Subscribe(topic, p.cfg.Qos, func(cli *MQTT.Client, msg MQTT.Message) {
-				clientHandle.Subscribe([]byte(msg.Topic()), msg.Payload())
-			})
-			if subToken.Wait() && subToken.Error() != nil {
-				// p.lg.Errorf("客户端[%s]订阅主题发生异常:%s", clientID, subToken.Error().Error())
-				// return
+
+			token, err := cli.Subscribe(topic, MQTT.QoS1)
+			if err != nil {
+				time.Sleep(10 * time.Microsecond)
 				goto LB_RECONNECT
 			}
+			token.Wait()
+
 			p.clients.Set(clientID, cli)
 		}(p.clientData[i])
 	}
@@ -249,8 +252,9 @@ func (p *Publish) disconnect() {
 	clientCount := p.clients.Len()
 	disCount := int(float32(clientCount) * (float32(p.cfg.DisconnectScale) / 100))
 	for _, v := range p.clients.ToMap() {
-		cli := v.(*MQTT.Client)
-		cli.Disconnect(100)
+		cli := v.(MQTT.MqttClienter)
+		cli.Disconnect()
+		//cli.Disconnect(100)
 		disCount--
 		if disCount == 0 {
 			break
@@ -274,7 +278,7 @@ func (p *Publish) userPublish(clientInfo config.ClientInfo) {
 	if c == nil {
 		return
 	}
-	cli := c.(*MQTT.Client)
+	cli := c.(MQTT.MqttClienter)
 	for j := 0; j < len(clientInfo.Relations); j++ {
 		cTime := time.Now()
 		sendPacket := config.PacketInfo{
@@ -295,7 +299,8 @@ func (p *Publish) userPublish(clientInfo config.ClientInfo) {
 			continue
 		}
 		topic := "C/" + clientInfo.Relations[j]
-		cli.Publish(topic, p.cfg.Qos, false, bufData)
+		cli.Publish(topic, MQTT.QoS(p.cfg.Qos), false, bufData)
+		//cli.Publish(topic, p.cfg.Qos, false, bufData)
 		// if publishToken.Wait() && publishToken.Error() != nil {
 		// 	p.lg.Errorf("客户端[%s]发布消息出现异常:%s", clientInfo.ClientID, publishToken.Error().Error())
 		// 	continue

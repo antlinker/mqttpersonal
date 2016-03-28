@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	MQTT "github.com/antlinker/go-mqtt/client"
+
 	"github.com/antlinker/mqttpersonal/config"
 
 	"gopkg.in/mgo.v2/bson"
@@ -18,18 +20,25 @@ func NewHandleConnect(clientID string, pub *Publish) *HandleConnect {
 }
 
 type HandleConnect struct {
+	MQTT.DefaultConnListen
+	MQTT.DefaultSubscribeListen
 	clientID string
 	pub      *Publish
 }
 
-func (hc *HandleConnect) ErrorHandle(err error) {
-	hc.pub.lg.Errorf("客户端%s发生异常:%s,已断开连接!", hc.clientID, err.Error())
+func (hc *HandleConnect) OnConnStart(event *MQTT.MqttConnEvent) {
+
+}
+func (hc *HandleConnect) OnConnSuccess(event *MQTT.MqttConnEvent) {
+
+}
+func (hc *HandleConnect) OnConnFailure(event *MQTT.MqttConnEvent, returncode int, err error) {
+	hc.pub.lg.Debugf("OnConnFailure(%d):%v", returncode, err)
 	if !hc.pub.cfg.AutoReconnect {
 		hc.pub.clients.Remove(hc.clientID)
 	}
 }
-
-func (hc *HandleConnect) Subscribe(topicName, message []byte) {
+func (hc *HandleConnect) OnRecvPublish(event *MQTT.MqttRecvPubEvent, topic string, message []byte, qos MQTT.QoS) {
 	atomic.AddInt64(&hc.pub.receiveNum, 1)
 	if hc.pub.cfg.IsStore {
 		var packetInfo config.PacketInfo
@@ -39,4 +48,9 @@ func (hc *HandleConnect) Subscribe(topicName, message []byte) {
 			hc.pub.lg.Errorf("Handle subscribe store error:%s", err.Error())
 		}
 	}
+}
+
+func (hc *HandleConnect) OnSubscribeSuccess(event *MQTT.MqttEvent, sub []MQTT.SubFilter, result []MQTT.QoS) {
+	hc.DefaultSubscribeListen.OnSubscribeSuccess(event, sub, result)
+
 }

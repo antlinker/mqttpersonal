@@ -1,17 +1,23 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
-	"github.com/antlinker/alog"
-	"github.com/codegangsta/cli"
+	"net/http"
+	_ "net/http/pprof"
 
+	"github.com/antlinker/alog"
 	"github.com/antlinker/mqttpersonal/clear"
 	"github.com/antlinker/mqttpersonal/generate"
 	"github.com/antlinker/mqttpersonal/publish"
+	"github.com/codegangsta/cli"
 )
 
 func main() {
+	go func() {
+		fmt.Println(http.ListenAndServe("0.0.0.0:9090", nil))
+	}()
 	alog.RegisterAlog("conf/log.yaml")
 	app := cli.NewApp()
 	app.Name = "mqttpersonal"
