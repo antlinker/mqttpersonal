@@ -71,6 +71,9 @@ type Publish struct {
 	arrReceiveNum   []int64
 	end             chan bool
 	startTime       time.Time
+
+	subscribeNum      int64
+	subscribeTotalNum int64
 }
 
 func (p *Publish) Init() error {
@@ -110,6 +113,8 @@ func (p *Publish) initConnection() error {
 	var wgroup sync.WaitGroup
 	cl := len(p.clientData)
 	wgroup.Add(cl)
+	p.lg.Infof("需要建立:%d个连接", cl)
+	p.subscribeTotalNum += int64(cl)
 	for i, l := 0, cl; i < l; i++ {
 		go func(clientInfo config.ClientInfo) {
 			defer wgroup.Done()
@@ -138,7 +143,7 @@ func (p *Publish) initConnection() error {
 			cli.AddConnListener(clientHandle)
 			cli.AddRecvPubListener(clientHandle)
 			cli.AddPublishListener(clientHandle)
-			//cli.AddSubListener(clientHandle)
+			cli.AddSubListener(clientHandle)
 			//cli.AddPacketListener(clientHandle)
 		LB_RECONNECT:
 
@@ -148,15 +153,23 @@ func (p *Publish) initConnection() error {
 				goto LB_RECONNECT
 			}
 			topic := "C/" + clientID
-
+		LB_SUBSCRIBE:
 			token, err := cli.Subscribe(topic, MQTT.QoS1)
 			if err != nil {
+				p.lg.Info("订阅失败．重新连接.")
+				cli.Disconnect()
+
 				time.Sleep(10 * time.Microsecond)
-				goto LB_RECONNECT
+				goto LB_SUBSCRIBE
 			}
 			token.Wait()
+			if token.Err() != nil {
+				p.lg.Info("订阅失败．重新订阅.")
+				time.Sleep(10 * time.Microsecond)
 
-			p.clients.Set(clientID, cli)
+				goto LB_SUBSCRIBE
+			}
+
 		}(p.clientData[i])
 	}
 	wgroup.Wait()
@@ -219,6 +232,8 @@ func (p *Publish) pubAndRecOutput(ticker *time.Ticker) {
 总耗时                      %.2fs
 执行次数                    %d
 客户端数量                  %d
+订阅数量                    %d
+实际订阅量                  %d
 应发包量                    %d
 实际发包量                  %d
 每秒平均的发包量            %d
@@ -229,7 +244,7 @@ func (p *Publish) pubAndRecOutput(ticker *time.Ticker) {
 每秒最大的接包量            %d`
 
 		fmt.Printf(output,
-			currentSecond, p.execNum, clientNum, p.publishTotalNum, p.publishNum, avgPNum, p.maxPublishNum, p.receiveTotalNum, p.receiveNum, avgRNum, p.maxReceiveNum)
+			currentSecond, p.execNum, clientNum, p.subscribeTotalNum, p.subscribeNum, p.publishTotalNum, p.publishNum, avgPNum, p.maxPublishNum, p.receiveTotalNum, p.receiveNum, avgRNum, p.maxReceiveNum)
 		fmt.Printf("\n")
 	}
 }

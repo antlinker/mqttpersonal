@@ -25,6 +25,7 @@ type HandleConnect struct {
 	MQTT.DefaultConnListen
 	MQTT.DefaultSubscribeListen
 	MQTT.DefaultPublishListen
+	MQTT.DefaultDisConnListen
 	clientID      string
 	pub           *Publish
 	recvPacketCnt int64
@@ -55,12 +56,15 @@ func (hc *HandleConnect) OnRecvPublish(event *MQTT.MqttRecvPubEvent, topic strin
 	}
 }
 func (hc *HandleConnect) OnUnSubscribeStart(event *MQTT.MqttEvent, filter []string) {
-	hc.pub.lg.Debugf("OnUnSubscribeStart:%v", filter)
+	//hc.pub.lg.Debugf("OnUnSubscribeStart:%v", filter)
+}
+func (*HandleConnect) OnSubscribeStart(event *MQTT.MqttEvent, sub []MQTT.SubFilter) {
+	//Mlog.Debugf("OnSubscribeStart:%v", sub)
 }
 func (hc *HandleConnect) OnSubscribeSuccess(event *MQTT.MqttEvent, sub []MQTT.SubFilter, result []MQTT.QoS) {
 
-	sc := atomic.AddInt64(&recvSubCnt, 1)
-	hc.pub.lg.Debugf("OnSubscribeSuccess:%d", sc)
+	atomic.AddInt64(&hc.pub.subscribeNum, 1)
+	hc.pub.clients.Set(hc.clientID, event.GetClient())
 }
 func (hc *HandleConnect) OnRecvPacket(event *MQTT.MqttEvent, packet packet.MessagePacket, recvPacketCnt int64) {
 	rc := atomic.AddInt64(&hcrecvPacketCnt, 1)

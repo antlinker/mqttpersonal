@@ -51,7 +51,7 @@ func (g *Generate) InitClientData() {
 	g.lg.Info("开始初始化客户端数据...")
 	for i := 0; i < g.cfg.ClientNum; i++ {
 		weight := g.getWeight()
-		clientID := fmt.Sprintf("%d_%d", time.Now().Unix(), atomic.AddUint64(&g.gID, 1))
+		clientID := fmt.Sprintf("%d_%d", time.Now().UnixNano(), atomic.AddUint64(&g.gID, 1))
 		g.clientData[i] = &config.ClientInfo{
 			ClientID: clientID,
 			Weight:   weight,
