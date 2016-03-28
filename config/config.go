@@ -3,7 +3,7 @@ package config
 import "time"
 
 const (
-	DataBase = "individual-testing"
+	DataBase = "personal-testing"
 	C_Client = "clientinfo"
 	C_Packet = "packetinfo"
 )

@@ -71,18 +71,21 @@ func (g *Generate) Store() error {
 	var maxRelationsNum, minRelationsNum, sumRelationsNum, totalNum int
 	for i := 0; i < g.cfg.ClientNum; i++ {
 		clientInfo := g.clientData[i]
-		for j := 0; j <= g.cfg.Level; j++ {
-			w := clientInfo.Weight - j
-			clientIDs := g.weightClientData[w]
-			if j == 0 {
-				for k := 0; k < len(clientIDs); k++ {
-					if clientIDs[k] == clientInfo.ClientID {
-						clientIDs = append(clientIDs[:k], clientIDs[k+1:]...)
+		cw := clientInfo.Weight
+		for j := cw - g.cfg.Level; j <= cw; j++ {
+			clientIDs := g.weightClientData[j]
+			for k := 0; k < len(clientIDs); k++ {
+				var exist bool
+				for _, v := range clientInfo.Relations {
+					if v == clientIDs[k] {
+						exist = true
 						break
 					}
 				}
+				if !exist {
+					clientInfo.Relations = append(clientInfo.Relations, clientIDs[k])
+				}
 			}
-			clientInfo.Relations = append(clientInfo.Relations, clientIDs...)
 		}
 		l := len(clientInfo.Relations)
 		if l == 0 {
