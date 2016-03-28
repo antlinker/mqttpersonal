@@ -137,6 +137,9 @@ func (p *Publish) initConnection() error {
 			}
 			cli.AddConnListener(clientHandle)
 			cli.AddRecvPubListener(clientHandle)
+			cli.AddPublishListener(clientHandle)
+			//cli.AddSubListener(clientHandle)
+			//cli.AddPacketListener(clientHandle)
 		LB_RECONNECT:
 
 			if err := cli.Connect(); err != nil {
@@ -305,7 +308,7 @@ func (p *Publish) userPublish(clientInfo config.ClientInfo) {
 		// 	p.lg.Errorf("客户端[%s]发布消息出现异常:%s", clientInfo.ClientID, publishToken.Error().Error())
 		// 	continue
 		// }
-		atomic.AddInt64(&p.publishNum, 1)
+
 		// 好友之间的发包间隔
 		if v := p.cfg.UserInterval; v > 0 {
 			time.Sleep(time.Duration(v) * time.Millisecond)

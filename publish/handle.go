@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/antlinker/go-mqtt/packet"
+
 	MQTT "github.com/antlinker/go-mqtt/client"
 
 	"github.com/antlinker/mqttpersonal/config"
@@ -22,8 +24,11 @@ func NewHandleConnect(clientID string, pub *Publish) *HandleConnect {
 type HandleConnect struct {
 	MQTT.DefaultConnListen
 	MQTT.DefaultSubscribeListen
-	clientID string
-	pub      *Publish
+	MQTT.DefaultPublishListen
+	clientID      string
+	pub           *Publish
+	recvPacketCnt int64
+	sendPacketCnt int64
 }
 
 func (hc *HandleConnect) OnConnStart(event *MQTT.MqttConnEvent) {
@@ -49,8 +54,33 @@ func (hc *HandleConnect) OnRecvPublish(event *MQTT.MqttRecvPubEvent, topic strin
 		}
 	}
 }
-
+func (hc *HandleConnect) OnUnSubscribeStart(event *MQTT.MqttEvent, filter []string) {
+	hc.pub.lg.Debugf("OnUnSubscribeStart:%v", filter)
+}
 func (hc *HandleConnect) OnSubscribeSuccess(event *MQTT.MqttEvent, sub []MQTT.SubFilter, result []MQTT.QoS) {
-	hc.DefaultSubscribeListen.OnSubscribeSuccess(event, sub, result)
+
+	sc := atomic.AddInt64(&recvSubCnt, 1)
+	hc.pub.lg.Debugf("OnSubscribeSuccess:%d", sc)
+}
+func (hc *HandleConnect) OnRecvPacket(event *MQTT.MqttEvent, packet packet.MessagePacket, recvPacketCnt int64) {
+	rc := atomic.AddInt64(&hcrecvPacketCnt, 1)
+	hc.pub.lg.Debugf("OnRecvPacket:%d", rc)
+}
+func (hc *HandleConnect) OnSendPacket(event *MQTT.MqttEvent, packet packet.MessagePacket, sendPacketCnt int64) {
+	sc := atomic.AddInt64(&hcsendPacketCnt, 1)
+	hc.pub.lg.Debugf("OnSendPacket:%d", sc)
+}
+
+func (hc *HandleConnect) OnPubReady(event *MQTT.MqttPublishEvent, mp *MQTT.MqttPacket) {
+	//Mlog.Debugf("OnPubReady:%v", event.GetSendCnt(PubCnt_TOTAL))
+}
+func (hc *HandleConnect) OnPubSuccess(event *MQTT.MqttPublishEvent, mp *MQTT.MqttPacket) {
+	atomic.AddInt64(&hc.pub.publishNum, 1)
+}
+func (hc *HandleConnect) OnPubFinal(event *MQTT.MqttPublishEvent, mp *MQTT.MqttPacket) {
 
 }
+
+var hcrecvPacketCnt int64
+var hcsendPacketCnt int64
+var recvSubCnt int64
