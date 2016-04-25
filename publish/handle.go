@@ -24,7 +24,7 @@ func NewHandleConnect(clientID string, pub *Publish) *HandleConnect {
 type HandleConnect struct {
 	MQTT.DefaultConnListen
 	MQTT.DefaultSubscribeListen
-	MQTT.DefaultPublishListen
+	MQTT.DefaultPubListen
 	MQTT.DefaultDisConnListen
 	clientID      string
 	pub           *Publish
@@ -55,13 +55,13 @@ func (hc *HandleConnect) OnRecvPublish(event *MQTT.MqttRecvPubEvent, topic strin
 		}
 	}
 }
-func (hc *HandleConnect) OnUnSubscribeStart(event *MQTT.MqttEvent, filter []string) {
+func (hc *HandleConnect) OnUnSubStart(event *MQTT.MqttEvent, filter []string) {
 	//hc.pub.lg.Debugf("OnUnSubscribeStart:%v", filter)
 }
-func (*HandleConnect) OnSubscribeStart(event *MQTT.MqttEvent, sub []MQTT.SubFilter) {
+func (*HandleConnect) OnSubStart(event *MQTT.MqttEvent, sub []MQTT.SubFilter) {
 	//Mlog.Debugf("OnSubscribeStart:%v", sub)
 }
-func (hc *HandleConnect) OnSubscribeSuccess(event *MQTT.MqttEvent, sub []MQTT.SubFilter, result []MQTT.QoS) {
+func (hc *HandleConnect) OnSubSuccess(event *MQTT.MqttEvent, sub []MQTT.SubFilter, result []MQTT.QoS) {
 
 	atomic.AddInt64(&hc.pub.subscribeNum, 1)
 	hc.pub.clients.Set(hc.clientID, event.GetClient())
@@ -70,19 +70,13 @@ func (hc *HandleConnect) OnRecvPacket(event *MQTT.MqttEvent, packet packet.Messa
 	rc := atomic.AddInt64(&hcrecvPacketCnt, 1)
 	hc.pub.lg.Debugf("OnRecvPacket:%d", rc)
 }
-func (hc *HandleConnect) OnSendPacket(event *MQTT.MqttEvent, packet packet.MessagePacket, sendPacketCnt int64) {
+func (hc *HandleConnect) OnSendPacket(event *MQTT.MqttEvent, packet packet.MessagePacket, sendPacketCnt int64, err error) {
 	sc := atomic.AddInt64(&hcsendPacketCnt, 1)
 	hc.pub.lg.Debugf("OnSendPacket:%d", sc)
 }
 
-func (hc *HandleConnect) OnPubReady(event *MQTT.MqttPublishEvent, mp *MQTT.MqttPacket) {
-	//Mlog.Debugf("OnPubReady:%v", event.GetSendCnt(PubCnt_TOTAL))
-}
-func (hc *HandleConnect) OnPubSuccess(event *MQTT.MqttPublishEvent, mp *MQTT.MqttPacket) {
+func (hc *HandleConnect) OnPubSuccess(event *MQTT.MqttPubEvent, mp *MQTT.MqttPacket) {
 	atomic.AddInt64(&hc.pub.publishNum, 1)
-}
-func (hc *HandleConnect) OnPubFinal(event *MQTT.MqttPublishEvent, mp *MQTT.MqttPacket) {
-
 }
 
 var hcrecvPacketCnt int64

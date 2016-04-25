@@ -120,7 +120,7 @@ func (p *Publish) initConnection() error {
 			defer wgroup.Done()
 			clientID := clientInfo.ClientID
 			opts := MQTT.MqttOption{
-				Addr:               fmt.Sprintf("%s://%s", p.cfg.Network, p.cfg.Address),
+				Addr:               p.cfg.Address,
 				Clientid:           clientID,
 				ReconnTimeInterval: 1,
 			}
@@ -142,7 +142,7 @@ func (p *Publish) initConnection() error {
 			}
 			cli.AddConnListener(clientHandle)
 			cli.AddRecvPubListener(clientHandle)
-			cli.AddPublishListener(clientHandle)
+			cli.AddPubListener(clientHandle)
 			cli.AddSubListener(clientHandle)
 			//cli.AddPacketListener(clientHandle)
 		LB_RECONNECT:

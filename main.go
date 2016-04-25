@@ -101,11 +101,6 @@ func main() {
 				Usage: "是否执行持久化存储",
 			},
 			cli.StringFlag{
-				Name:  "Network, net",
-				Value: "tcp",
-				Usage: "MQTT Network",
-			},
-			cli.StringFlag{
 				Name:  "Address, addr",
 				Value: "127.0.0.1:1883",
 				Usage: "MQTT Address",
@@ -146,7 +141,6 @@ func main() {
 				Interval:     ctx.Int("Interval"),
 				UserInterval: ctx.Int("UserInterval"),
 				IsStore:      ctx.Bool("IsStore"),
-				Network:      ctx.String("Network"),
 				Address:      ctx.String("Address"),
 				Qos:          byte(ctx.Int("QOS")),
 				UserName:     ctx.String("UserName"),
